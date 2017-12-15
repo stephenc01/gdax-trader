@@ -348,22 +348,14 @@ class TradeEngine():
                         # Trending strategy
                         new_buy_flag = new_buy_flag and Decimal(indicators[cur_period.name]['obv_ema2']) > Decimal(indicators[cur_period.name]['obv_ema6'])
                         new_sell_flag = new_sell_flag or Decimal(indicators[cur_period.name]['obv_ema2']) < Decimal(indicators[cur_period.name]['obv_ema6'])
-<<<<<<< HEAD
                         if Decimal(indicators[cur_period.name]['adx']) > Decimal(25.0):
                             # Ranging strategy
                             new_buy_flag = new_buy_flag and Decimal(indicators[cur_period.name]['stoch_slowk']) > Decimal(indicators[cur_period.name]['stoch_slowd'])
                             new_sell_flag = new_sell_flag or Decimal(indicators[cur_period.name]['stoch_slowk']) < Decimal(indicators[cur_period.name]['stoch_slowd'])
                         else:
                             # Ranging strategy
-                            new_buy_flag = new_buy_flag and Decimal(indicators[cur_period.name]['stoch_slowk']) > Decimal(indicators[cur_period.name]['stoch_slowd']) and \
-                                           Decimal(indicators[cur_period.name]['stoch_slowk']) < Decimal('80.0')
+                            new_buy_flag = new_buy_flag and Decimal(indicators[cur_period.name]['stoch_slowk']) > Decimal(indicators[cur_period.name]['stoch_slowd'])
                             new_sell_flag = new_sell_flag or Decimal(indicators[cur_period.name]['stoch_slowk']) < Decimal(indicators[cur_period.name]['stoch_slowd'])
-=======
-                    else:
-                        # Ranging strategy
-                        new_buy_flag = new_buy_flag and Decimal(indicators[cur_period.name]['stoch_slowk']) > Decimal(indicators[cur_period.name]['stoch_slowd'])
-                        new_sell_flag = new_sell_flag or Decimal(indicators[cur_period.name]['stoch_slowk']) < Decimal(indicators[cur_period.name]['stoch_slowd'])
->>>>>>> Remove %k limitation overall from strategy
 
             if product_id == 'LTC-BTC' or product_id == 'ETH-BTC':
                 ltc_or_eth_fiat_product = self.get_product_by_product_id(product_id[:3] + '-' + self.fiat_currency)
