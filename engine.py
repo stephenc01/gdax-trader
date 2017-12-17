@@ -336,14 +336,14 @@ class TradeEngine():
             new_buy_flag = True
             new_sell_flag = False
             for cur_period in period_list:
-                if cur_period.period_size == (60 * 60):
+                if cur_period.period_size == (60 * 15):
                     new_buy_flag = new_buy_flag and Decimal(indicators[cur_period.name]['macd_hist']) > Decimal('0.0')
                     new_sell_flag = new_sell_flag or Decimal(indicators[cur_period.name]['macd_hist']) < Decimal('0.0')
                 else:  
                     # Trending strategy
                     new_buy_flag = new_buy_flag and Decimal(indicators[cur_period.name]['obv_ema2']) > Decimal(indicators[cur_period.name]['obv_ema6'])
                     new_sell_flag = new_sell_flag or Decimal(indicators[cur_period.name]['obv_ema2']) < Decimal(indicators[cur_period.name]['obv_ema6'])
-                    if Decimal(indicators[cur_period.name[:-2] + '60']['adx']) < Decimal(25.0):
+                    if Decimal(indicators[cur_period.name[:-1] + '15']['adx']) < Decimal(25.0):
                         # Ranging strategy
                         new_buy_flag = new_buy_flag and Decimal(indicators[cur_period.name]['stoch_slowk']) > Decimal(indicators[cur_period.name]['stoch_slowd']) or \
                                                         Decimal(indicators[cur_period.name]['stoch_slowk']) > Decimal('98.0')
