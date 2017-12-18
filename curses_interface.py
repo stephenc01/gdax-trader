@@ -49,20 +49,12 @@ class cursesDisplay:
     def update_indicators(self, period_list, indicators):
         starty = self.starty
         for cur_period in period_list:
-            if cur_period.period_size == (60 * 15):
-                self.pad.addstr(starty, 0, "%s - MACD_HIST: %f ADX: %f" %
-                                (cur_period.name, indicators[cur_period.name]['macd_hist'],
-                                 indicators[cur_period.name]['adx']),
-                                 self.print_color(indicators[cur_period.name]['macd_hist'],
-                                                  Decimal('0.0'), indicators[cur_period.name]['adx'],
-                                                  Decimal('0.0')))
-            elif cur_period.period_size == (60 * 5):
-                stoch_diff = Decimal(indicators[cur_period.name]['stoch_slowk']) - Decimal(indicators[cur_period.name]['stoch_slowd'])
-                obv_diff = Decimal(indicators[cur_period.name]['obv_ema2']) - Decimal(indicators[cur_period.name]['obv_ema6'])
-                self.pad.addstr(starty, 0, "%s - OBV_DIFF: %f STOCH_DIFF: %f" %
-                                (cur_period.name, obv_diff, stoch_diff),
-                                 self.print_color(Decimal(obv_diff), Decimal('0.0'),
-                                                  Decimal(stoch_diff), Decimal('0.0')))
+            stoch_diff = Decimal(indicators[cur_period.name]['stoch_slowk']) - Decimal(indicators[cur_period.name]['stoch_slowd'])
+            obv_diff = Decimal(indicators[cur_period.name]['obv_ema2']) - Decimal(indicators[cur_period.name]['obv_ema6'])
+            self.pad.addstr(starty, 0, "%s - OBV_DIFF: %f STOCH_DIFF: %f" %
+                            (cur_period.name, obv_diff, stoch_diff),
+                             self.print_color(Decimal(obv_diff), Decimal('0.0'),
+                                              Decimal(stoch_diff), Decimal('0.0')))
             starty += 1
         self.starty = starty + 1
 
