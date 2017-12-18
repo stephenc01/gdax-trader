@@ -51,8 +51,8 @@ class cursesDisplay:
         for cur_period in period_list:
             stoch_diff = Decimal(indicators[cur_period.name]['stoch_slowk']) - Decimal(indicators[cur_period.name]['stoch_slowd'])
             obv_diff = Decimal(indicators[cur_period.name]['obv_ema2']) - Decimal(indicators[cur_period.name]['obv_ema6'])
-            self.pad.addstr(starty, 0, "%s - OBV_DIFF: %f STOCH_DIFF: %f" %
-                            (cur_period.name, obv_diff, stoch_diff),
+            self.pad.addstr(starty, 0, "%s - MACD_HIST: %f OBV_DIFF: %f STOCH_DIFF: %f" %
+                            (cur_period.name, indicators[cur_period.name]['macd_hist'], obv_diff, stoch_diff),
                              self.print_color(Decimal(obv_diff), Decimal('0.0'),
                                               Decimal(stoch_diff), Decimal('0.0')))
             starty += 1
