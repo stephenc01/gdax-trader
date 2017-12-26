@@ -1,19 +1,84 @@
 import curses
 import time
 import logging
+import pymongo
 from decimal import Decimal
 
 
-class cursesDisplay:
+class interface(object):
     def __init__(self, enable=True):
         self.enable = enable
         if not self.enable:
             return
         self.logger = logging.getLogger('trader-logger')
+        self.timestamp = ""
+        self.last_update_time = 0
+
+    def close(self):
+        # close data here
+        return
+
+    def update(self, trade_engine, indicators, period_list, msg):
+        # update data here
+        return
+
+class flaskInterface(interface):
+    def __init__(self, enable=True):
+        super(flaskInterface, self).__init__(enable=enable)
+        self.db = pymongo.MongoClient().gdax_trader
+        self.first_update = True
+
+    def update_candlesticks(self, period_list):
+        for cur_period in period_list:
+            if self.first_update:
+                candlesticks = cur_period.candlesticks
+            else:
+                candlesticks = cur_period.candlesticks[-10:]
+            self.db.periods.update({'period_name': cur_period.name, 'time': cur_period.cur_candlestick.time},
+                                   {'$set': {'product_id': cur_period.product,
+                                    'period_name': cur_period.name,
+                                    'time': cur_period.cur_candlestick.time,
+                                    'open': cur_period.cur_candlestick.open,
+                                    'high': cur_period.cur_candlestick.high,
+                                    'low': cur_period.cur_candlestick.low,
+                                    'close': cur_period.cur_candlestick.close,
+                                    'volume': cur_period.cur_candlestick.volume}}, upsert=True)
+            for candlestick in candlesticks:
+                self.db.periods.update({'period_name': cur_period.name, 'time': candlestick[0]},
+                                       {'$set': {'product_id': cur_period.product,
+                                                 'period_name': cur_period.name,
+                                                 'time': candlestick[0],
+                                                 'open': candlestick[1],
+                                                 'high': candlestick[2],
+                                                 'low': candlestick[3],
+                                                 'close': candlestick[4],
+                                                 'volume': candlestick[5]}}, upsert=True)
+
+    def update_heartbeat(self):
+        if self.timestamp:
+            self.db.engine.update({'heartbeat': {'$exists': True}}, {'$set': {'heartbeat': self.timestamp}}, upsert=True)
+
+    def update(self, trade_engine, indicators, period_list, msg):
+        if time.time() - self.last_update_time > 1.0:
+            if msg.get('type') == "heartbeat":
+                self.timestamp = msg.get('time')
+            #self.update_balances(trade_engine)
+            self.update_heartbeat()
+            #self.update_signals(trade_engine)
+            # Make sure indicator dict is populated
+            #if len(indicators[period_list[0].name]) > 0:
+            #    self.update_indicators(period_list, indicators)
+            self.update_candlesticks(period_list)
+            #self.update_orders(trade_engine)
+            self.first_update = False
+            self.last_update_time = time.time()
+
+class cursesDisplay(interface):
+    def __init__(self, enable=True):
+        super(cursesDisplay, self).__init__(enable=enable)
         self.stdscr = curses.initscr()
         self.pad = curses.newpad(23, 120)
         self.order_pad = curses.newpad(10, 120)
-        self.timestamp = ""
         self.last_order_update = 0
         curses.start_color()
         curses.noecho()

@@ -11,9 +11,10 @@ import engine
 import yaml
 import queue
 import time
-import curses_interface
+import interfaces
 import logging
 import datetime
+import threading
 from decimal import Decimal
 from websocket import WebSocketConnectionClosedException
 
@@ -55,88 +56,98 @@ class TradeAndHeartbeatWebsocket(gdax.WebsocketClient):
     def on_message(self, msg):
         self.websocket_queue.put(msg)
 
-
 with open("config.yml", 'r') as ymlfile:
     config = yaml.load(ymlfile)
-logger = logging.getLogger('trader-logger')
-logger.setLevel(logging.DEBUG)
-if config['logging']:
-    logger.addHandler(logging.FileHandler("debug.log"))
-if config['frontend'] == 'debug':
-    logger.addHandler(logging.StreamHandler())
-error_logger = logging.getLogger('error-logger')
-error_logger.addHandler(logging.FileHandler("error.log"))
 
-# Periods to update indicators for
-indicator_period_list = []
-# Periods to actively trade on (typically 1 per product)
-trade_period_list = {}
-# List of products that we are actually monitoring
-product_list = set()
-fiat_currency = config['fiat']
+def main(config):
+    logger = logging.getLogger('trader-logger')
+    logger.setLevel(logging.DEBUG)
+    if config['logging']:
+        logger.addHandler(logging.FileHandler("debug.log"))
+    if config['frontend'] == 'debug':
+        logger.addHandler(logging.StreamHandler())
+    error_logger = logging.getLogger('error-logger')
+    error_logger.addHandler(logging.FileHandler("error.log"))
 
-for cur_period in config['periods']:
-    if cur_period.get('meta'):
-        new_period = period.MetaPeriod(period_size=(60 * cur_period['length']), fiat=fiat_currency,
+    # Periods to update indicators for
+    indicator_period_list = []
+    # Periods to actively trade on (typically 1 per product)
+    trade_period_list = {}
+    # List of products that we are actually monitoring
+    product_list = set()
+    fiat_currency = config['fiat']
+
+    for cur_period in config['periods']:
+        if cur_period.get('meta'):
+            new_period = period.MetaPeriod(period_size=(60 * cur_period['length']), fiat=fiat_currency,
+                                           product=cur_period['product'], name=cur_period['name'])
+        else:
+            new_period = period.Period(period_size=(60 * cur_period['length']),
                                        product=cur_period['product'], name=cur_period['name'])
+        indicator_period_list.append(new_period)
+        product_list.add(cur_period['product'])
+        if cur_period['trade']:
+            if trade_period_list.get(cur_period['product']) is None:
+                trade_period_list[cur_period['product']] = []
+            trade_period_list[cur_period['product']].append(new_period)
+
+    auth_client = gdax.AuthenticatedClient(config['key'], config['secret'], config['passphrase'])
+    max_slippage = Decimal(str(config['max_slippage']))
+    trade_engine = engine.TradeEngine(auth_client, product_list=product_list, fiat=fiat_currency, is_live=config['live'], max_slippage=max_slippage)
+    gdax_websocket = TradeAndHeartbeatWebsocket(fiat=fiat_currency)
+    gdax_websocket.start()
+    indicator_period_list[0].verbose_heartbeat = True
+    indicator_subsys = indicators.IndicatorSubsystem(indicator_period_list)
+    last_indicator_update = time.time()
+
+    if config['frontend'] == 'curses':
+        interface = interfaces.cursesDisplay(enable=True)
+    elif config['frontend'] == 'flask':
+        interface = interfaces.flaskInterface(enable=True)
     else:
-        new_period = period.Period(period_size=(60 * cur_period['length']),
-                                   product=cur_period['product'], name=cur_period['name'])
-    indicator_period_list.append(new_period)
-    product_list.add(cur_period['product'])
-    if cur_period['trade']:
-        if trade_period_list.get(cur_period['product']) is None:
-            trade_period_list[cur_period['product']] = []
-        trade_period_list[cur_period['product']].append(new_period)
-
-auth_client = gdax.AuthenticatedClient(config['key'], config['secret'], config['passphrase'])
-max_slippage = Decimal(str(config['max_slippage']))
-trade_engine = engine.TradeEngine(auth_client, product_list=product_list, fiat=fiat_currency, is_live=config['live'], max_slippage=max_slippage)
-gdax_websocket = TradeAndHeartbeatWebsocket(fiat=fiat_currency)
-gdax_websocket.start()
-indicator_period_list[0].verbose_heartbeat = True
-indicator_subsys = indicators.IndicatorSubsystem(indicator_period_list)
-last_indicator_update = time.time()
-
-if config['frontend'] == 'curses':
-    curses_enable = True
-else:
-    curses_enable = False
-interface = curses_interface.cursesDisplay(enable=curses_enable)
-while(True):
-    try:
-        msg = gdax_websocket.websocket_queue.get(timeout=15)
-        for product in trade_engine.products:
-            product.order_book.process_message(msg)
-        if msg.get('type') == "match":
-            for cur_period in indicator_period_list:
-                cur_period.process_trade(msg)
-            if time.time() - last_indicator_update >= 1.0:
+        interface = interfaces.cursesDisplay(enable=False)
+    while(True):
+        try:
+            msg = gdax_websocket.websocket_queue.get(timeout=15)
+            for product in trade_engine.products:
+                product.order_book.process_message(msg)
+            if msg.get('type') == "match":
                 for cur_period in indicator_period_list:
-                    indicator_subsys.recalculate_indicators(cur_period)
+                    cur_period.process_trade(msg)
+                if time.time() - last_indicator_update >= 1.0:
+                    for cur_period in indicator_period_list:
+                        indicator_subsys.recalculate_indicators(cur_period)
+                    for product_id, period_list in trade_period_list.items():
+                        trade_engine.determine_trades(product_id, period_list, indicator_subsys.current_indicators)
+                    last_indicator_update = time.time()
+            elif msg.get('type') == "heartbeat":
+                for cur_period in indicator_period_list:
+                    cur_period.process_heartbeat(msg)
                 for product_id, period_list in trade_period_list.items():
-                    trade_engine.determine_trades(product_id, period_list, indicator_subsys.current_indicators)
-                last_indicator_update = time.time()
-        elif msg.get('type') == "heartbeat":
+                    if len(indicator_subsys.current_indicators[cur_period.name]) > 0:
+                        trade_engine.determine_trades(product_id, period_list, indicator_subsys.current_indicators)
+                trade_engine.print_amounts()
+            interface.update(trade_engine, indicator_subsys.current_indicators,
+                             indicator_period_list, msg)
+        except KeyboardInterrupt:
+            trade_engine.close(exit=True)
+            gdax_websocket.close()
+            interface.close()
+            break
+        except Exception as e:
+            error_logger.exception(datetime.datetime.now())
+            trade_engine.close()
+            gdax_websocket.close()
+            # Period data cannot be trusted. Re-initialize
             for cur_period in indicator_period_list:
-                cur_period.process_heartbeat(msg)
-            for product_id, period_list in trade_period_list.items():
-                if len(indicator_subsys.current_indicators[cur_period.name]) > 0:
-                    trade_engine.determine_trades(product_id, period_list, indicator_subsys.current_indicators)
-            trade_engine.print_amounts()
-        interface.update(trade_engine, indicator_subsys.current_indicators,
-                         indicator_period_list, msg)
-    except KeyboardInterrupt:
-        trade_engine.close(exit=True)
-        gdax_websocket.close()
-        interface.close()
-        break
-    except Exception as e:
-        error_logger.exception(datetime.datetime.now())
-        trade_engine.close()
-        gdax_websocket.close()
-        # Period data cannot be trusted. Re-initialize
-        for cur_period in indicator_period_list:
-            cur_period.initialize()
-        time.sleep(10)
-        gdax_websocket.start()
+                cur_period.initialize()
+            time.sleep(10)
+            gdax_websocket.start()
+
+if __name__ == '__main__':
+    if config['frontend'] != 'flask':
+        main(config)
+else:
+    from flask_backend import app
+    main_thread = threading.Thread(target=main, name='main_thread', args=(config,))
+    main_thread.start()
